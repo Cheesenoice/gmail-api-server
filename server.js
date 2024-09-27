@@ -4,6 +4,7 @@ const { google } = require("googleapis");
 const path = require("path");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const { error } = require("console");
 require("dotenv").config();
 
 const app = express();
@@ -122,11 +123,13 @@ function listEmails(auth, res, email) {
                 : "";
             }
             const specificUrl = extractLink(body);
-            const emailInfo = {
-              link:
-                specificUrl ||
-                "Mail chưa về, bạn làm lại theo thứ tự - Bấm Send mail trước nha.",
-            };
+            const emailInfo = specificUrl
+              ? { link: specificUrl }
+              : {
+                  error:
+                    "Mail chưa về, bạn làm lại theo thứ tự - Bấm Send mail trước nha.",
+                };
+
             res.json(emailInfo);
           }
         );
