@@ -28,6 +28,50 @@ const credentials = {
 const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
 const TOKEN_PATH = path.join(__dirname, "token.json");
 
+// Route to start OAuth process
+app.get("/authorize", (req, res) => {
+  const { client_secret, client_id, redirect_uris } = credentials.web;
+  const oAuth2Client = new google.auth.OAuth2(
+    client_id,
+    client_secret,
+    redirect_uris[0] // Make sure the redirect URI matches the one in Google Console
+  );
+
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: "offline",
+    scope: SCOPES,
+  });
+
+  res.redirect(authUrl); // Redirect user to the consent page
+});
+
+// Callback route to handle OAuth2 callback and store the token
+app.get("/oauth2callback", (req, res) => {
+  const { client_secret, client_id, redirect_uris } = credentials.web;
+  const oAuth2Client = new google.auth.OAuth2(
+    client_id,
+    client_secret,
+    redirect_uris[0]
+  );
+
+  const code = req.query.code;
+
+  if (!code) {
+    return res.status(400).send("Authorization code not found.");
+  }
+
+  // Exchange the authorization code for a token
+  oAuth2Client.getToken(code, (err, token) => {
+    if (err) return res.status(500).send("Error retrieving access token");
+
+    // Store the token to disk for later program executions
+    fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
+      if (err) return res.status(500).send("Error saving token.");
+      res.send("Authorization successful! You can now use the Gmail API.");
+    });
+  });
+});
+
 // Route to handle POST request to filter emails by receiver's email
 app.post("/emails", (req, res) => {
   const { email } = req.body;
@@ -52,38 +96,11 @@ function authorize(credentials, callback) {
 
   // Check if we have previously stored a token.
   fs.readFile(TOKEN_PATH, (err, token) => {
-    if (err) return getNewToken(oAuth2Client, callback);
+    if (err) {
+      return callback(oAuth2Client); // If no token, we need to authorize
+    }
     oAuth2Client.setCredentials(JSON.parse(token));
     callback(oAuth2Client);
-  });
-}
-
-/**
- * Get and store new token after prompting for user authorization, and then
- * execute the callback with the authorized OAuth2 client.
- */
-function getNewToken(oAuth2Client, callback) {
-  const authUrl = oAuth2Client.generateAuthUrl({
-    access_type: "offline",
-    scope: SCOPES,
-  });
-  console.log("Authorize this app by visiting this URL:", authUrl);
-  const rl = require("readline").createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-  rl.question("Enter the code from that page here: ", (code) => {
-    rl.close();
-    oAuth2Client.getToken(code, (err, token) => {
-      if (err) return console.error("Error retrieving access token", err);
-      oAuth2Client.setCredentials(token);
-      // Store the token to disk for later program executions
-      fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
-        if (err) return console.error(err);
-        console.log("Token stored to", TOKEN_PATH);
-      });
-      callback(oAuth2Client);
-    });
   });
 }
 
@@ -150,34 +167,6 @@ function listEmails(auth, res, email) {
     }
   );
 }
-
-const extractLink = (body) => {
-  const plainTextBody = body.replace(/<\/?[^>]+(>|$)/g, "");
-
-  if (plainTextBody.includes("travel/verify?nftoken")) {
-    const urlRegex = /https?:\/\/[^\s\]]+/g;
-    const urls = plainTextBody.match(urlRegex);
-    const specificUrl = urls?.find((url) =>
-      url.includes("travel/verify?nftoken")
-    );
-    if (specificUrl) {
-      return specificUrl;
-    }
-  }
-
-  if (plainTextBody.includes("update-primary-location")) {
-    const urlRegex = /https?:\/\/[^\s\]]+/g;
-    const urls = plainTextBody.match(urlRegex);
-    const specificUrl = urls?.find((url) =>
-      url.includes("update-primary-location")
-    );
-    if (specificUrl) {
-      return specificUrl;
-    }
-  }
-
-  return null;
-};
 
 // Start the server
 app.listen(PORT, () => {
