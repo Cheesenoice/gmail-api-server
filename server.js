@@ -3,6 +3,7 @@ const fs = require("fs");
 const { google } = require("googleapis");
 const path = require("path");
 const bodyParser = require("body-parser");
+require("dotenv").config(); // Load environment variables from .env
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,15 +11,22 @@ const PORT = process.env.PORT || 3000;
 // Middleware to parse JSON body
 app.use(bodyParser.json());
 
-// Path to your credentials.json
-const CREDENTIALS_PATH = path.join(__dirname, "credentials.json");
-const TOKEN_PATH = path.join(__dirname, "token.json");
+const credentials = {
+  web: {
+    client_id: process.env.CLIENT_ID,
+    project_id: process.env.PROJECT_ID,
+    auth_uri: process.env.AUTH_URI,
+    token_uri: process.env.TOKEN_URI,
+    auth_provider_x509_cert_url: process.env.AUTH_PROVIDER_CERT_URL,
+    client_secret: process.env.CLIENT_SECRET,
+    redirect_uris: [process.env.REDIRECT_URI, process.env.DEPLOY_REDIRECT_URI],
+    javascript_origins: [process.env.ORIGIN_1, process.env.ORIGIN_2],
+  },
+};
 
-// Load client secrets and scopes from a local file
-function loadCredentials() {
-  const content = fs.readFileSync(CREDENTIALS_PATH, "utf-8");
-  return JSON.parse(content);
-}
+// Scopes to authorize access to Gmail API
+const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"];
+const TOKEN_PATH = path.join(__dirname, "token.json");
 
 // Route to handle POST request to filter emails by receiver's email
 app.post("/emails", (req, res) => {
@@ -28,16 +36,13 @@ app.post("/emails", (req, res) => {
     return res.status(400).send("Receiver's email is required.");
   }
 
-  const credentials = loadCredentials();
-  const SCOPES = credentials.scopes;
-
-  authorize(credentials, SCOPES, (auth) => listEmails(auth, res, email));
+  authorize(credentials, (auth) => listEmails(auth, res, email));
 });
 
 /**
  * Create an OAuth2 client with the given credentials, and then call the Gmail API.
  */
-function authorize(credentials, SCOPES, callback) {
+function authorize(credentials, callback) {
   const { client_secret, client_id, redirect_uris } = credentials.web;
   const oAuth2Client = new google.auth.OAuth2(
     client_id,
@@ -47,7 +52,7 @@ function authorize(credentials, SCOPES, callback) {
 
   // Check if we have previously stored a token.
   fs.readFile(TOKEN_PATH, (err, token) => {
-    if (err) return getNewToken(oAuth2Client, SCOPES, callback);
+    if (err) return getNewToken(oAuth2Client, callback);
     oAuth2Client.setCredentials(JSON.parse(token));
     callback(oAuth2Client);
   });
@@ -57,7 +62,7 @@ function authorize(credentials, SCOPES, callback) {
  * Get and store new token after prompting for user authorization, and then
  * execute the callback with the authorized OAuth2 client.
  */
-function getNewToken(oAuth2Client, SCOPES, callback) {
+function getNewToken(oAuth2Client, callback) {
   const authUrl = oAuth2Client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
