@@ -67,7 +67,7 @@ app.get("/oauth2callback", (req, res) => {
 // Example route to fetch emails
 app.post("/emails", (req, res) => {
   const { email } = req.body;
-  if (!email) return res.status(400).send("Receiver's email is required.");
+  if (!email) return res.status(400).json({ error: "Vui lòng nhập mail." });
 
   authorize((auth) => listEmails(auth, res, email));
 });
@@ -122,12 +122,18 @@ function listEmails(auth, res, email) {
                 : "";
             }
             const specificUrl = extractLink(body);
-            const emailInfo = { link: specificUrl || "Mail chưa về" };
+            const emailInfo = {
+              link:
+                specificUrl ||
+                "Mail chưa về, bạn làm lại theo thứ tự - Bấm Send mail trước nha.",
+            };
             res.json(emailInfo);
           }
         );
       } else {
-        res.status(404).send(`No messages found to ${email}.`);
+        res
+          .status(404)
+          .json({ error: "Mail ko đúng hoặc ko thuộc dịch vụ bên mình." });
       }
     }
   );
